@@ -168,6 +168,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .mb-4 { margin-bottom: 16px; }
 .mt-2 { margin-top: 8px; }
 .w-full { width: 100%; }
+
 .divider-top {
   border-top: 1px solid var(--border);
   padding-top: 16px;
