@@ -1,8 +1,8 @@
 use serde::Serialize;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, State};
-use tauri_plugin_clipboard_manager::ClipboardExt;
+use secrecy::{ExposeSecret, SecretString};
+use tauri::State;
 
 use crate::crypto::KdfParams;
 use crate::errors::AppError;
@@ -48,14 +48,17 @@ pub fn vault_status(state: State<'_, AppState>) -> VaultStatus {
 #[tauri::command]
 pub fn initialize_vault(
     state: State<'_, AppState>,
-    master_password: String,
+    master_password: SecretString,
 ) -> Result<(), AppError> {
-    validate_master_password(&master_password)?;
+    validate_master_password(master_password.expose_secret())?;
     if state.has_vault() {
         return Err(AppError::InvalidInput("vault already exists".into()));
     }
-    let session =
-        Session::create(state.vault_path.clone(), &master_password, KdfParams::default())?;
+    let session = Session::create(
+        state.vault_path.clone(),
+        master_password.expose_secret(),
+        KdfParams::default(),
+    )?;
     state.set_session(session)?;
     Ok(())
 }
@@ -63,7 +66,7 @@ pub fn initialize_vault(
 #[tauri::command]
 pub fn unlock_vault(
     state: State<'_, AppState>,
-    master_password: String,
+    master_password: SecretString,
 ) -> Result<(), AppError> {
     if !state.has_vault() {
         return Err(AppError::NotInitialized);
@@ -71,7 +74,7 @@ pub fn unlock_vault(
     if state.is_unlocked() {
         return Err(AppError::AlreadyUnlocked);
     }
-    let session = Session::unlock(state.vault_path.clone(), &master_password)?;
+    let session = Session::unlock(state.vault_path.clone(), master_password.expose_secret())?;
     state.set_session(session)?;
     Ok(())
 }
@@ -93,10 +96,10 @@ pub fn list_entries(state: State<'_, AppState>) -> Result<Vec<EntryMeta>, AppErr
 pub fn create_entry(
     state: State<'_, AppState>,
     title: String,
-    password: String,
+    password: SecretString,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.add_entry(title, password)?;
+        let entry = session.add_entry(title, password.expose_secret().to_string())?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -106,10 +109,14 @@ pub fn update_entry(
     state: State<'_, AppState>,
     id: String,
     title: Option<String>,
-    password: Option<String>,
+    password: Option<SecretString>,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.update_entry(&id, title, password)?;
+        let entry = session.update_entry(
+            &id,
+            title,
+            password.map(|p| p.expose_secret().to_string()),
+        )?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -133,24 +140,19 @@ pub fn generate_password(opts: GenOptions) -> Result<String, AppError> {
 }
 
 #[tauri::command]
-pub fn copy_to_clipboard(
-    app: AppHandle,
-    text: String,
-    clear_after_secs: u64,
-) -> Result<(), AppError> {
-    app.clipboard()
-        .write_text(text.clone())
-        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+pub fn copy_to_clipboard(text: String, clear_after_secs: u64) -> Result<(), AppError> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    clipboard.set_text(text.clone()).map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
     if clear_after_secs > 0 {
-        let app_handle = app.clone();
-        let original_text = text.clone();
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(clear_after_secs));
-            // Очищаем, только если в буфере всё ещё наш пароль
-            if let Ok(current) = app_handle.clipboard().read_text() {
-                if current == original_text {
-                    let _ = app_handle.clipboard().write_text("".to_string());
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                if let Ok(current) = cb.get_text() {
+                    // Очищаем только если в буфере всё ещё наш пароль
+                    if current == text {
+                        let _ = cb.set_text("");
+                    }
                 }
             }
         });
@@ -161,21 +163,17 @@ pub fn copy_to_clipboard(
 #[tauri::command]
 pub fn destroy_vault(
     state: State<'_, AppState>,
-    master_password: String,
+    master_password: SecretString,
 ) -> Result<(), AppError> {
     if !state.has_vault() {
         return Err(AppError::NotInitialized);
     }
 
-    // Проверяем мастер-пароль. Если он неверный, файлы останутся нетронутыми.
-    let _ = Session::unlock(state.vault_path.clone(), &master_password)?;
+    let _ = Session::unlock(state.vault_path.clone(), master_password.expose_secret())?;
 
-    // Сбрасываем текущую активную сессию (уничтожаем ключ в памяти)
     let _ = state.take_session();
 
-    // Полностью удаляем файл хранилища и его бэкап
     let _ = std::fs::remove_file(&state.vault_path);
-    
     let bak_path = state.vault_path.with_extension("enc.bak");
     let _ = std::fs::remove_file(bak_path);
 
