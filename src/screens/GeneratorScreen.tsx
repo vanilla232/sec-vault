@@ -37,7 +37,7 @@ export function GeneratorScreen() {
   const handleCopy = async () => {
     if (!password) return;
     try {
-      await api.copyToClipboard(password, 10); // Таймер уменьшен до 10 секунд
+      await api.copyToClipboard(password, 10);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (e) {
@@ -55,7 +55,7 @@ export function GeneratorScreen() {
       <div className="password-display">
         <input type="text" readOnly value={password} className="input password-input" aria-label="Пароль" />
         <button className="icon-btn" onClick={handleCopy} title="Скопировать" disabled={!password}>
-          {copied ? <Check size={20} className="text-danger" /> : <Copy size={20} />}
+          {copied ? <Check size={20} className="text-accent" /> : <Copy size={20} />}
         </button>
         <button className="icon-btn" onClick={() => generate(options)} title="Сгенерировать заново">
           <RefreshCw size={20} />
@@ -93,7 +93,7 @@ export function GeneratorScreen() {
           </label>
         </div>
 
-        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+        <div className="divider-top">
           <label className="checkbox-label">
             <input type="checkbox" checked={options.excludeAmbiguous} onChange={() => toggleOption("excludeAmbiguous")} />
             <span>Исключить неоднозначные (0, O, l, I)</span>

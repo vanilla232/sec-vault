@@ -1,13 +1,15 @@
 :root {
-  --bg: #0a0a0a;
-  --surface: #141414;
-  --surface-2: #1c1c1c;
-  --border: #2a2a2a;
-  --text: #e5e5e5;
-  --text-dim: #9a9a9a;
-  --accent: #8b5cf6;
-  --accent-hover: #a78bfa;
+  --bg: #09090b;
+  --surface: #121215;
+  --surface-2: #1c1c21;
+  --border: #27272a;
+  
+  --accent: #4ade80;
+  --accent-hover: #86efac;
+  --text: #f4f4f5;
+  --text-dim: #a1a1aa;
   --danger: #ef4444;
+  
   --radius: 12px;
   --radius-sm: 8px;
   --space: 8px;
@@ -22,7 +24,7 @@ html, body, #root { margin: 0; padding: 0; height: 100%; }
 body {
   color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5;
   background-color: var(--bg);
-  background-image: radial-gradient(circle at 1px 1px, rgba(139, 92, 246, 0.05) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, rgba(74, 222, 128, 0.05) 1px, transparent 0);
   background-size: 24px 24px; -webkit-font-smoothing: antialiased;
 }
 
@@ -34,7 +36,7 @@ button {
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
 button.danger { border-color: var(--danger); color: var(--danger); }
 button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
@@ -45,9 +47,10 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 }
 .icon-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--text); border-color: transparent; }
 
-.input {
+.input, textarea.input {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 10px 12px; outline: none; width: 100%; transition: border-color var(--transition);
+  resize: vertical; min-height: 40px;
 }
 .input:focus { border-color: var(--accent); }
 
@@ -69,7 +72,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
   cursor: pointer; transition: background var(--transition), color var(--transition), border-color var(--transition);
 }
 .sidebar-btn:hover { background: var(--surface-2); color: var(--text); }
-.sidebar-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.sidebar-btn.active { background: var(--accent); border-color: var(--accent); color: #000; }
 .sidebar-btn.active:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
 .tooltip-wrap { position: relative; display: inline-flex; }
@@ -87,7 +90,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .screen-text { margin: 0; color: var(--text-dim); }
 
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 1000;
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; z-index: 1000;
 }
 .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 480px; max-width: calc(100vw - 48px); }
 .modal-title { margin: 0 0 16px; font-size: 16px; font-weight: 600; }
@@ -98,7 +101,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .form-submit { min-width: 180px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 
 .spinner {
-  width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff;
+  width: 16px; height: 16px; border: 2px solid rgba(0, 0, 0, 0.3); border-top-color: #000;
   border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -110,7 +113,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .strength-segment { flex: 1; background: var(--border); transition: background-color var(--transition); }
 .strength-segment.filled-weak { background: var(--danger); }
 .strength-segment.filled-medium { background: #eab308; }
-.strength-segment.filled-strong { background: #22c55e; }
+.strength-segment.filled-strong { background: var(--accent); }
 .strength-text { font-size: 12px; color: var(--text-dim); text-align: right; }
 
 .generator-layout, .settings-layout { max-width: 600px; margin: 0 auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; width: 100%; }
@@ -131,7 +134,7 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .checkbox-label { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
 .checkbox-label input[type="checkbox"] { appearance: none; width: 20px; height: 20px; border: 2px solid var(--border); border-radius: 6px; background: var(--surface-2); cursor: pointer; position: relative; transition: all var(--transition); }
 .checkbox-label input[type="checkbox"]:checked { background: var(--accent); border-color: var(--accent); }
-.checkbox-label input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.checkbox-label input[type="checkbox"]:checked::after { content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px; border: solid #000; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
 .vault-layout { max-width: 800px; margin: 0 auto; padding: 32px; width: 100%; display: flex; flex-direction: column; gap: 24px; }
 .vault-header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
@@ -141,19 +144,29 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .vault-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; transition: border-color var(--transition); }
 .vault-row:hover { border-color: var(--surface-2); }
 .vault-title { flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vault-password { font-family: var(--font-mono); color: var(--text-dim); width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-password { font-family: var(--font-mono); color: var(--text-dim); width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vault-actions { display: flex; gap: 4px; }
-.vault-create-row { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 16px; flex-wrap: wrap; position: relative; }
+.vault-create-row { display: flex; flex-direction: column; gap: 12px; background: var(--surface); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 16px; }
 .vault-create-row .input { padding: 8px 12px; height: 40px; background: var(--surface-2); }
-.vault-create-title { flex: 1; min-width: 150px; }
-.vault-create-password-wrapper { display: flex; flex: 1; gap: 8px; }
-.vault-create-password { width: 200px; font-family: var(--font-mono); }
-.vault-create-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.vault-create-error { width: 100%; margin-top: 8px; }
+.vault-create-row textarea.input { height: auto; min-height: 60px; }
+.vault-create-password-wrapper { display: flex; gap: 8px; }
+.vault-create-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .delete-confirm { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
-.delete-confirm-text { margin-right: 4px; }
 .btn-small { padding: 4px 8px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px 0; color: var(--text-dim); gap: 16px; }
+
+.note-modal-content {
+  background: var(--surface-2);
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
 
 .danger-zone {
   border: 1px solid var(--danger); border-radius: var(--radius-sm);
@@ -162,14 +175,10 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .danger-zone-label { color: var(--danger); }
 .danger-zone-text { margin-bottom: 16px; display: block; }
 
-/* Дополнительные утилитарные классы для замены инлайн-стилей */
 .text-danger { color: var(--danger); }
+.text-accent { color: var(--accent); }
 .mr-4 { margin-right: 16px; }
 .mb-4 { margin-bottom: 16px; }
 .mt-2 { margin-top: 8px; }
 .w-full { width: 100%; }
-
-.divider-top {
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
-}
+.divider-top { border-top: 1px solid var(--border); padding-top: 16px; }
