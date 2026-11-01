@@ -215,7 +215,7 @@ mod tests {
         let pt = hex::decode(pt_hex).unwrap();
         let expected_ct = hex::decode(expected_ct_hex).unwrap();
 
-        // Проверяем, что наш модуль корректно расшифровывает эталонный шифротекст NIST
+        // Проверка, что модуль корректно расшифровывает эталонный шифротекст NIST
         let decrypted = decrypt(&key, &nonce, &expected_ct).unwrap();
         assert_eq!(decrypted, pt);
     }

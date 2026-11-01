@@ -50,6 +50,8 @@ pub struct Entry {
     pub id: String,
     pub title: String,
     pub password: String,
+    #[serde(default)]
+    pub note: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -143,7 +145,7 @@ impl Session {
         &self.payload.entries
     }
 
-    pub fn add_entry(&mut self, title: String, password: String) -> Result<Entry, VaultError> {
+    pub fn add_entry(&mut self, title: String, password: String, note: String) -> Result<Entry, VaultError> {
         let title = title.trim().to_string();
         if title.is_empty() {
             return Err(VaultError::InvalidInput("title is empty".into()));
@@ -157,6 +159,7 @@ impl Session {
             id: Uuid::new_v4().to_string(),
             title,
             password,
+            note,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -170,6 +173,7 @@ impl Session {
         id: &str,
         title: Option<String>,
         password: Option<String>,
+        note: Option<String>,
     ) -> Result<Entry, VaultError> {
         let idx = self
             .payload
@@ -202,6 +206,9 @@ impl Session {
         if let Some(new_password) = password {
             entry.password = new_password;
         }
+        if let Some(new_note) = note {
+            entry.note = new_note;
+        }
         entry.updated_at = now;
 
         let updated = entry.clone();
@@ -231,9 +238,6 @@ impl Session {
     }
 }
 
-/// Temp-файл в том же каталоге fsync rename поверх цели
-/// Гарантирует что при падении процесса посреди записи vault.enc не окажется
-/// в полу-записанном состоянии  либо старая версия либо новая целиком
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent directory")
@@ -242,7 +246,6 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
         .file_name()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no file name"))?;
 
-    // Создаем бэкап перед перезаписью
     if path.exists() {
         let bak_path = path.with_extension("enc.bak");
         let _ = fs::copy(path, bak_path);
@@ -284,12 +287,13 @@ mod tests {
         let path = new_path(&dir);
         
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        session.add_entry("GitHub".into(), "s3cret".into()).unwrap();
+        session.add_entry("GitHub".into(), "s3cret".into(), "my note".into()).unwrap();
         drop(session);
 
         let session = Session::unlock(path, "master123456").unwrap();
         assert_eq!(session.list_entries().len(), 1);
         assert_eq!(session.list_entries()[0].title, "GitHub");
+        assert_eq!(session.list_entries()[0].note, "my note");
     }
 
     #[test]
@@ -301,7 +305,6 @@ mod tests {
         let err = Session::unlock(path.clone(), "wrong-password");
         assert!(matches!(err, Err(VaultError::Crypto(_))));
 
-        // После неудачной попытки файл должен оставаться читаемым с правильным паролем
         let session = Session::unlock(path, "master123456").unwrap();
         assert!(session.list_entries().is_empty());
     }
@@ -316,7 +319,7 @@ mod tests {
         let mut file: VaultFile = serde_json::from_slice(&raw).unwrap();
 
         let mut ct = B64.decode(&file.ciphertext).unwrap();
-        ct[0] ^= 0x01; // Портим шифротекст
+        ct[0] ^= 0x01;
         file.ciphertext = B64.encode(&ct);
         
         fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
@@ -332,10 +335,10 @@ mod tests {
         let bak_path = path.with_extension("enc.bak");
 
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        assert!(!bak_path.exists()); // При создании бэкапа еще нет
+        assert!(!bak_path.exists());
 
-        session.add_entry("Test".into(), "pwd".into()).unwrap();
-        assert!(bak_path.exists()); // При перезаписи бэкап создается
+        session.add_entry("Test".into(), "pwd".into(), "".into()).unwrap();
+        assert!(bak_path.exists());
     }
 
     #[test]
@@ -343,7 +346,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = new_path(&dir);
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        session.add_entry("GitHub".into(), "very-unique-secret-xyz".into()).unwrap();
+        session.add_entry("GitHub".into(), "very-unique-secret-xyz".into(), "".into()).unwrap();
         drop(session);
 
         let raw = fs::read(&path).unwrap();

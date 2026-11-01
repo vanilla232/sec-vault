@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Copy, Eye, EyeOff, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, FileText, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { api } from "../lib/api";
 import type { EntryMeta } from "../lib/types";
+import { Modal } from "../components/Modal";
 
 export function VaultScreen() {
   const [entries, setEntries] = useState<EntryMeta[]>([]);
@@ -9,13 +10,17 @@ export function VaultScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  
   const [newTitle, setNewTitle] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newNote, setNewNote] = useState("");
+  
   const [createError, setCreateError] = useState<string | null>(null);
   const [revealedId, setRevealedId] = useState<string | null>(null);
   const [revealedValue, setRevealedValue] = useState<string>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingNote, setViewingNote] = useState<EntryMeta | null>(null);
 
   const revealTimerRef = useRef<number | null>(null);
   const copyTimerRef = useRef<number | null>(null);
@@ -66,7 +71,7 @@ export function VaultScreen() {
   const handleCopy = async (id: string) => {
     try {
       const pw = await api.revealEntryPassword(id);
-      await api.copyToClipboard(pw, 10); // Таймер уменьшен до 10 секунд для паранойи
+      await api.copyToClipboard(pw, 10);
       setCopiedId(id);
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
       copyTimerRef.current = window.setTimeout(() => setCopiedId(null), 1500);
@@ -79,9 +84,10 @@ export function VaultScreen() {
     if (!newTitle.trim() || !newPassword) return;
     try {
       setCreateError(null);
-      await api.createEntry(newTitle, newPassword);
+      await api.createEntry(newTitle, newPassword, newNote);
       setNewTitle("");
       setNewPassword("");
+      setNewNote("");
       setIsCreating(false);
       await loadEntries();
     } catch (e) {
@@ -132,16 +138,17 @@ export function VaultScreen() {
 
       {isCreating && (
         <div className="vault-create-row">
-          <input className="input vault-create-title" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
+          <input className="input" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
           <div className="vault-create-password-wrapper">
-            <input className="input vault-create-password" placeholder="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+            <input className="input" placeholder="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             <button className="icon-btn" onClick={generateNewPassword} title="Сгенерировать"><RefreshCw size={18} /></button>
           </div>
+          <textarea className="input" placeholder="Заметка (необязательно)" value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2} />
           <div className="vault-create-actions">
             <button className="primary icon-btn" onClick={handleCreate} title="Сохранить" disabled={!newTitle.trim() || !newPassword}><Check size={18} /></button>
-            <button className="icon-btn" onClick={() => { setIsCreating(false); setNewTitle(""); setNewPassword(""); setCreateError(null); }} title="Отмена"><X size={18} /></button>
+            <button className="icon-btn" onClick={() => { setIsCreating(false); setNewTitle(""); setNewPassword(""); setNewNote(""); setCreateError(null); }} title="Отмена"><X size={18} /></button>
           </div>
-          {createError && <p className="error-text vault-create-error">{createError}</p>}
+          {createError && <p className="error-text">{createError}</p>}
         </div>
       )}
 
@@ -154,15 +161,20 @@ export function VaultScreen() {
               <span className="vault-title">{entry.title}</span>
               <span className="vault-password">{revealedId === entry.id ? revealedValue : "••••••••••••"}</span>
               <div className="vault-actions">
+                {entry.note && (
+                  <button className="icon-btn" onClick={() => setViewingNote(entry)} title="Посмотреть заметку">
+                    <FileText size={18} />
+                  </button>
+                )}
                 <button className="icon-btn" onClick={() => handleReveal(entry.id)} title={revealedId === entry.id ? "Скрыть" : "Показать"}>
                   {revealedId === entry.id ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
                 <button className="icon-btn" onClick={() => handleCopy(entry.id)} title="Копировать">
-                  {copiedId === entry.id ? <Check size={18} className="text-danger" /> : <Copy size={18} />}
+                  {copiedId === entry.id ? <Check size={18} className="text-accent" /> : <Copy size={18} />}
                 </button>
                 {deletingId === entry.id ? (
                   <div className="delete-confirm">
-                    <span className="delete-confirm-text">Удалить?</span>
+                    <span>Удалить?</span>
                     <button className="danger icon-btn btn-small" onClick={() => handleDelete(entry.id)}>Да</button>
                     <button className="icon-btn btn-small" onClick={() => setDeletingId(null)}>Нет</button>
                   </div>
@@ -174,6 +186,17 @@ export function VaultScreen() {
           ))
         )}
       </div>
+
+      <Modal
+        open={!!viewingNote}
+        onClose={() => setViewingNote(null)}
+        title={viewingNote?.title}
+        actions={<button className="primary" onClick={() => setViewingNote(null)}>Закрыть</button>}
+      >
+        <div className="note-modal-content">
+          {viewingNote?.note}
+        </div>
+      </Modal>
     </div>
   );
 }

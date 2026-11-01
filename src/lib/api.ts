@@ -14,11 +14,11 @@ export const api = {
 
   listEntries: () => invoke<EntryMeta[]>("list_entries"),
 
-  createEntry: (title: string, password: string) =>
-    invoke<EntryMeta>("create_entry", { title, password }),
+  createEntry: (title: string, password: string, note: string) =>
+    invoke<EntryMeta>("create_entry", { title, password, note }),
 
-  updateEntry: (id: string, title?: string, password?: string) =>
-    invoke<EntryMeta>("update_entry", { id, title, password }),
+  updateEntry: (id: string, title?: string, password?: string, note?: string) =>
+    invoke<EntryMeta>("update_entry", { id, title, password, note }),
 
   deleteEntry: (id: string) => invoke<void>("delete_entry", { id }),
 
@@ -28,7 +28,7 @@ export const api = {
   generatePassword: (opts: GenOptions) =>
     invoke<string>("generate_password", { opts }),
 
-  copyToClipboard: (text: string, clearAfterSecs: number = 30) =>
+  copyToClipboard: (text: string, clearAfterSecs: number = 10) =>
     invoke<void>("copy_to_clipboard", { text, clearAfterSecs }),
 
   destroyVault: (masterPassword: string) =>

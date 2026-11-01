@@ -22,6 +22,7 @@ pub struct VaultStatus {
 pub struct EntryMeta {
     pub id: String,
     pub title: String,
+    pub note: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -31,6 +32,7 @@ impl From<&Entry> for EntryMeta {
         Self {
             id: e.id.clone(),
             title: e.title.clone(),
+            note: e.note.clone(),
             created_at: e.created_at.clone(),
             updated_at: e.updated_at.clone(),
         }
@@ -97,9 +99,10 @@ pub fn create_entry(
     state: State<'_, AppState>,
     title: String,
     password: SecretString,
+    note: String,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.add_entry(title, password.expose_secret().to_string())?;
+        let entry = session.add_entry(title, password.expose_secret().to_string(), note)?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -110,12 +113,14 @@ pub fn update_entry(
     id: String,
     title: Option<String>,
     password: Option<SecretString>,
+    note: Option<String>,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
         let entry = session.update_entry(
             &id,
             title,
             password.map(|p| p.expose_secret().to_string()),
+            note,
         )?;
         Ok(EntryMeta::from(&entry))
     })
@@ -149,7 +154,6 @@ pub fn copy_to_clipboard(text: String, clear_after_secs: u64) -> Result<(), AppE
             thread::sleep(Duration::from_secs(clear_after_secs));
             if let Ok(mut cb) = arboard::Clipboard::new() {
                 if let Ok(current) = cb.get_text() {
-                    // Очищаем только если в буфере всё ещё наш пароль
                     if current == text {
                         let _ = cb.set_text("");
                     }
@@ -170,7 +174,6 @@ pub fn destroy_vault(
     }
 
     let _ = Session::unlock(state.vault_path.clone(), master_password.expose_secret())?;
-
     let _ = state.take_session();
 
     let _ = std::fs::remove_file(&state.vault_path);
