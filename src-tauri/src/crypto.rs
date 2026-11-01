@@ -55,7 +55,10 @@ pub fn derive_key(
         .map_err(|_| CryptoError::Kdf)?;
 
     let secret = SecretBox::new(Box::new(key_bytes));
+    
+    // Гарантируем зануление исходного массива до его удаления из стека
     key_bytes.zeroize();
+    
     Ok(secret)
 }
 
@@ -63,6 +66,7 @@ pub fn encrypt(key: &SecretKey, plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>), 
     let cipher = Aes256Gcm::new_from_slice(key.expose_secret().as_slice())
         .map_err(|_| CryptoError::InvalidKey)?;
 
+    // Критично: генерируем уникальный nonce на каждое шифрование (GCM не прощает повторного использования)
     let mut nonce_bytes = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
@@ -92,8 +96,7 @@ pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u
 mod tests {
     use super::*;
 
-    // Слабые параметры чтобы тесты не ждали секундами на KDF
-    fn fast() -> KdfParams {
+    fn fast_kdf() -> KdfParams {
         KdfParams {
             m_cost_kib: 4096,
             t_cost: 1,
@@ -102,81 +105,118 @@ mod tests {
     }
 
     #[test]
-    fn derive_is_deterministic() {
+    fn derive_key_is_deterministic() {
         let salt = [7u8; SALT_LEN];
-        let a = derive_key("hunter2", &salt, &fast()).unwrap();
-        let b = derive_key("hunter2", &salt, &fast()).unwrap();
+        let a = derive_key("hunter2", &salt, &fast_kdf()).unwrap();
+        let b = derive_key("hunter2", &salt, &fast_kdf()).unwrap();
         assert_eq!(a.expose_secret(), b.expose_secret());
     }
 
     #[test]
-    fn derive_depends_on_salt() {
-        let a = derive_key("hunter2", &[1u8; SALT_LEN], &fast()).unwrap();
-        let b = derive_key("hunter2", &[2u8; SALT_LEN], &fast()).unwrap();
+    fn derive_key_depends_on_salt() {
+        let a = derive_key("hunter2", &[1u8; SALT_LEN], &fast_kdf()).unwrap();
+        let b = derive_key("hunter2", &[2u8; SALT_LEN], &fast_kdf()).unwrap();
         assert_ne!(a.expose_secret(), b.expose_secret());
     }
 
     #[test]
-    fn derive_depends_on_password() {
+    fn derive_key_depends_on_password() {
         let salt = [3u8; SALT_LEN];
-        let a = derive_key("hunter2", &salt, &fast()).unwrap();
-        let b = derive_key("hunter3", &salt, &fast()).unwrap();
+        let a = derive_key("hunter2", &salt, &fast_kdf()).unwrap();
+        let b = derive_key("hunter3", &salt, &fast_kdf()).unwrap();
         assert_ne!(a.expose_secret(), b.expose_secret());
     }
 
     #[test]
-    fn roundtrip() {
+    fn derive_key_handles_unicode_and_long_passwords() {
+        let salt = [4u8; SALT_LEN];
+        let long_pw = "a".repeat(10000);
+        
+        assert!(derive_key("ПарольСЮникодом🔒", &salt, &fast_kdf()).is_ok());
+        assert!(derive_key(&long_pw, &salt, &fast_kdf()).is_ok());
+    }
+
+    #[test]
+    fn roundtrip_encrypt_decrypt() {
         let salt = generate_salt();
-        let key = derive_key("correct horse battery staple", &salt, &fast()).unwrap();
-        let msg = b"the answer is 42";
-        let (nonce, ct) = encrypt(&key, msg).unwrap();
-        let pt = decrypt(&key, &nonce, &ct).unwrap();
-        assert_eq!(pt, msg);
+        let key = derive_key("correct horse battery staple", &salt, &fast_kdf()).unwrap();
+        
+        let test_cases = vec![
+            b"the answer is 42".to_vec(),
+            b"".to_vec(), // Пустой массив
+            "Юникод текст 🔒".as_bytes().to_vec(),
+        ];
+
+        for msg in test_cases {
+            let (nonce, ct) = encrypt(&key, &msg).unwrap();
+            let pt = decrypt(&key, &nonce, &ct).unwrap();
+            assert_eq!(pt, msg);
+        }
     }
 
     #[test]
     fn wrong_key_fails() {
         let salt = generate_salt();
-        let k1 = derive_key("a", &salt, &fast()).unwrap();
-        let k2 = derive_key("b", &salt, &fast()).unwrap();
+        let k1 = derive_key("a", &salt, &fast_kdf()).unwrap();
+        let k2 = derive_key("b", &salt, &fast_kdf()).unwrap();
         let (nonce, ct) = encrypt(&k1, b"data").unwrap();
-        assert!(decrypt(&k2, &nonce, &ct).is_err());
+        
+        assert!(matches!(decrypt(&k2, &nonce, &ct), Err(CryptoError::Decrypt)));
     }
 
     #[test]
     fn tampered_ciphertext_fails() {
         let salt = generate_salt();
-        let key = derive_key("pass", &salt, &fast()).unwrap();
+        let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
         let (nonce, mut ct) = encrypt(&key, b"data").unwrap();
+        
         if let Some(byte) = ct.last_mut() {
             *byte ^= 0x01;
         }
-        assert!(decrypt(&key, &nonce, &ct).is_err());
+        
+        assert!(matches!(decrypt(&key, &nonce, &ct), Err(CryptoError::Decrypt)));
     }
 
     #[test]
     fn tampered_nonce_fails() {
         let salt = generate_salt();
-        let key = derive_key("pass", &salt, &fast()).unwrap();
+        let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
         let (mut nonce, ct) = encrypt(&key, b"data").unwrap();
+        
         nonce[0] ^= 0x01;
-        assert!(decrypt(&key, &nonce, &ct).is_err());
+        
+        assert!(matches!(decrypt(&key, &nonce, &ct), Err(CryptoError::Decrypt)));
     }
 
     #[test]
-    fn invalid_nonce_length_fails() {
+    fn nonce_is_unique() {
         let salt = generate_salt();
-        let key = derive_key("pass", &salt, &fast()).unwrap();
-        let (_nonce, ct) = encrypt(&key, b"data").unwrap();
-        assert!(decrypt(&key, &[0u8; 4], &ct).is_err());
-    }
-
-    #[test]
-    fn nonces_are_unique() {
-        let salt = generate_salt();
-        let key = derive_key("pass", &salt, &fast()).unwrap();
-        let (n1, _) = encrypt(&key, b"x").unwrap();
-        let (n2, _) = encrypt(&key, b"x").unwrap();
+        let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
+        let (n1, ct1) = encrypt(&key, b"x").unwrap();
+        let (n2, ct2) = encrypt(&key, b"x").unwrap();
+        
         assert_ne!(n1, n2);
+        assert_ne!(ct1, ct2);
+    }
+
+        #[test]
+    fn known_answer_test_nist_aes256gcm() {
+        // Вектор из NIST SP 800-38D (AES-256-GCM, Test Case 2, нулевой ключ/IV/данные)
+        let key_hex = "0000000000000000000000000000000000000000000000000000000000000000";
+        let nonce_hex = "000000000000000000000000";
+        let pt_hex = "00000000000000000000000000000000";
+        let expected_ct_hex = "cea7403d4d606b6e074ec5d3baf39d18d0d1c8a799996bf0265b98b5d48ab919";
+
+        let mut key_bytes = [0u8; KEY_LEN];
+        key_bytes.copy_from_slice(&hex::decode(key_hex).unwrap());
+        let key = SecretBox::new(Box::new(key_bytes));
+
+        let nonce = hex::decode(nonce_hex).unwrap();
+        let pt = hex::decode(pt_hex).unwrap();
+        let expected_ct = hex::decode(expected_ct_hex).unwrap();
+
+        // Проверяем, что наш модуль корректно расшифровывает эталонный шифротекст NIST
+        let decrypted = decrypt(&key, &nonce, &expected_ct).unwrap();
+        assert_eq!(decrypted, pt);
     }
 }

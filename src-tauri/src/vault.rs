@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -231,16 +229,11 @@ impl Session {
             .map(|e| e.password.as_str())
             .ok_or(VaultError::EntryNotFound)
     }
-
-    /// Полностью удаляет все записи из хранилища.
-    pub fn wipe_entries(&mut self) -> Result<(), VaultError> {
-        self.payload.entries.clear();
-        self.persist()?;
-        Ok(())
-    }
 }
 
-/// Атомарная запись с предварительным созданием бэкапа
+/// Temp-файл в том же каталоге fsync rename поверх цели
+/// Гарантирует что при падении процесса посреди записи vault.enc не окажется
+/// в полу-записанном состоянии  либо старая версия либо новая целиком
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent directory")
@@ -249,7 +242,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
         .file_name()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "no file name"))?;
 
-    // Создает бэкап перед перезаписью
+    // Создаем бэкап перед перезаписью
     if path.exists() {
         let bak_path = path.with_extension("enc.bak");
         let _ = fs::copy(path, bak_path);
@@ -286,25 +279,79 @@ mod tests {
     }
 
     #[test]
-    fn create_writes_file() {
+    fn create_and_unlock_roundtrip() {
         let dir = TempDir::new().unwrap();
         let path = new_path(&dir);
-        let session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        assert!(path.exists());
+        
+        let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
+        session.add_entry("GitHub".into(), "s3cret".into()).unwrap();
         drop(session);
+
+        let session = Session::unlock(path, "master123456").unwrap();
+        assert_eq!(session.list_entries().len(), 1);
+        assert_eq!(session.list_entries()[0].title, "GitHub");
     }
 
     #[test]
-    fn wipe_entries_removes_data() {
+    fn unlock_wrong_password_fails_and_state_is_consistent() {
+        let dir = TempDir::new().unwrap();
+        let path = new_path(&dir);
+        Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
+
+        let err = Session::unlock(path.clone(), "wrong-password");
+        assert!(matches!(err, Err(VaultError::Crypto(_))));
+
+        // После неудачной попытки файл должен оставаться читаемым с правильным паролем
+        let session = Session::unlock(path, "master123456").unwrap();
+        assert!(session.list_entries().is_empty());
+    }
+
+    #[test]
+    fn tampered_vault_file_fails_to_unlock() {
+        let dir = TempDir::new().unwrap();
+        let path = new_path(&dir);
+        Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
+
+        let raw = fs::read(&path).unwrap();
+        let mut file: VaultFile = serde_json::from_slice(&raw).unwrap();
+
+        let mut ct = B64.decode(&file.ciphertext).unwrap();
+        ct[0] ^= 0x01; // Портим шифротекст
+        file.ciphertext = B64.encode(&ct);
+        
+        fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+
+        let err = Session::unlock(path, "master123456");
+        assert!(matches!(err, Err(VaultError::Crypto(_))));
+    }
+
+    #[test]
+    fn backup_is_created_after_modification() {
+        let dir = TempDir::new().unwrap();
+        let path = new_path(&dir);
+        let bak_path = path.with_extension("enc.bak");
+
+        let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
+        assert!(!bak_path.exists()); // При создании бэкапа еще нет
+
+        session.add_entry("Test".into(), "pwd".into()).unwrap();
+        assert!(bak_path.exists()); // При перезаписи бэкап создается
+    }
+
+    #[test]
+    fn plaintext_is_not_stored_on_disk() {
         let dir = TempDir::new().unwrap();
         let path = new_path(&dir);
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        session.add_entry("test".into(), "pwd".into()).unwrap();
-        assert_eq!(session.list_entries().len(), 1);
-        session.wipe_entries().unwrap();
-        assert_eq!(session.list_entries().len(), 0);
+        session.add_entry("GitHub".into(), "very-unique-secret-xyz".into()).unwrap();
+        drop(session);
+
+        let raw = fs::read(&path).unwrap();
+        let needle = b"very-unique-secret-xyz";
         
-        let new_session = Session::unlock(path, "master123456").unwrap();
-        assert_eq!(new_session.list_entries().len(), 0);
+        assert!(
+            !raw.windows(needle.len()).any(|w| w == needle),
+            "plaintext password found on disk"
+        );
     }
 }
