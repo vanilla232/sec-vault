@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import type { VaultStatus } from "./lib/types";
 import { Sidebar, type Tab } from "./components/Sidebar";
@@ -34,25 +33,6 @@ export default function App() {
     }
   }, [refreshStatus]);
 
-  // Эффект для автоблокировки при потере фокуса (сворачивании на Android)
-  useEffect(() => {
-    const appWindow = getCurrentWindow();
-    let unlisten: (() => void) | undefined;
-
-    appWindow.onFocusChanged(({ payload: focused }) => {
-      // Если окно потеряло фокус (свернули) и хранилище открыто — блокируем
-      if (!focused && status?.unlocked) {
-        handleLock();
-      }
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [status?.unlocked, handleLock]);
-
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
@@ -62,7 +42,7 @@ export default function App() {
       <div className="screen-center">
         <div className="screen-card">
           <h1 className="screen-title">Ошибка</h1>
-          <p className="screen-text" style={{ color: "var(--danger)" }}>{error}</p>
+          <p className="screen-text text-danger">{error}</p>
         </div>
       </div>
     );

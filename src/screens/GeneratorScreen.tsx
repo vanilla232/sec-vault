@@ -4,12 +4,7 @@ import { api } from "../lib/api";
 import type { GenOptions } from "../lib/types";
 
 const DEFAULT_OPTIONS: GenOptions = {
-  length: 20,
-  upper: true,
-  lower: true,
-  digits: true,
-  symbols: true,
-  excludeAmbiguous: true,
+  length: 20, upper: true, lower: true, digits: true, symbols: true, excludeAmbiguous: true,
 };
 
 export function GeneratorScreen() {
@@ -28,9 +23,7 @@ export function GeneratorScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    generate(options);
-  }, [options, generate]);
+  useEffect(() => { generate(options); }, [options, generate]);
 
   const toggleOption = (key: keyof GenOptions) => {
     setOptions((prev) => {
@@ -44,7 +37,7 @@ export function GeneratorScreen() {
   const handleCopy = async () => {
     if (!password) return;
     try {
-      await api.copyToClipboard(password, 30);
+      await api.copyToClipboard(password, 10); // Таймер уменьшен до 10 секунд
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (e) {
@@ -62,7 +55,7 @@ export function GeneratorScreen() {
       <div className="password-display">
         <input type="text" readOnly value={password} className="input password-input" aria-label="Пароль" />
         <button className="icon-btn" onClick={handleCopy} title="Скопировать" disabled={!password}>
-          {copied ? <Check size={20} color="var(--accent)" /> : <Copy size={20} />}
+          {copied ? <Check size={20} className="text-danger" /> : <Copy size={20} />}
         </button>
         <button className="icon-btn" onClick={() => generate(options)} title="Сгенерировать заново">
           <RefreshCw size={20} />

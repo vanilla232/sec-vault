@@ -66,7 +66,7 @@ export function VaultScreen() {
   const handleCopy = async (id: string) => {
     try {
       const pw = await api.revealEntryPassword(id);
-      await api.copyToClipboard(pw, 30);
+      await api.copyToClipboard(pw, 10); // Таймер уменьшен до 10 секунд для паранойи
       setCopiedId(id);
       if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
       copyTimerRef.current = window.setTimeout(() => setCopiedId(null), 1500);
@@ -120,14 +120,12 @@ export function VaultScreen() {
     <div className="vault-layout">
       <div className="vault-header">
         <div className="vault-header-left">
-          <h1 className="screen-title" style={{ marginRight: "16px" }}>Хранилище</h1>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
+          <h1 className="screen-title mr-4">Хранилище</h1>
           <input type="text" className="input search-input" placeholder="Поиск..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          <button className="primary icon-btn" onClick={() => setIsCreating(true)} title="Создать запись" disabled={isCreating}>
-            <Plus size={20} />
-          </button>
         </div>
+        <button className="primary icon-btn" onClick={() => setIsCreating(true)} title="Создать запись" disabled={isCreating}>
+          <Plus size={20} />
+        </button>
       </div>
 
       {error && <p className="error-text">{error}</p>}
@@ -135,15 +133,15 @@ export function VaultScreen() {
       {isCreating && (
         <div className="vault-create-row">
           <input className="input vault-create-title" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
-          <div style={{ display: "flex", flex: 1, gap: "8px" }}>
+          <div className="vault-create-password-wrapper">
             <input className="input vault-create-password" placeholder="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-            <button className="icon-btn" onClick={generateNewPassword} title="Сгенерировать" style={{ flexShrink: 0 }}><RefreshCw size={18} /></button>
+            <button className="icon-btn" onClick={generateNewPassword} title="Сгенерировать"><RefreshCw size={18} /></button>
           </div>
-          <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
+          <div className="vault-create-actions">
             <button className="primary icon-btn" onClick={handleCreate} title="Сохранить" disabled={!newTitle.trim() || !newPassword}><Check size={18} /></button>
             <button className="icon-btn" onClick={() => { setIsCreating(false); setNewTitle(""); setNewPassword(""); setCreateError(null); }} title="Отмена"><X size={18} /></button>
           </div>
-          {createError && <p className="error-text" style={{ width: "100%", marginTop: "8px" }}>{createError}</p>}
+          {createError && <p className="error-text vault-create-error">{createError}</p>}
         </div>
       )}
 
@@ -160,13 +158,13 @@ export function VaultScreen() {
                   {revealedId === entry.id ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
                 <button className="icon-btn" onClick={() => handleCopy(entry.id)} title="Копировать">
-                  {copiedId === entry.id ? <Check size={18} color="var(--accent)" /> : <Copy size={18} />}
+                  {copiedId === entry.id ? <Check size={18} className="text-danger" /> : <Copy size={18} />}
                 </button>
                 {deletingId === entry.id ? (
                   <div className="delete-confirm">
-                    <span style={{ marginRight: "4px" }}>Удалить?</span>
-                    <button className="danger icon-btn" style={{ padding: "4px 8px" }} onClick={() => handleDelete(entry.id)}>Да</button>
-                    <button className="icon-btn" style={{ padding: "4px 8px" }} onClick={() => setDeletingId(null)}>Нет</button>
+                    <span className="delete-confirm-text">Удалить?</span>
+                    <button className="danger icon-btn btn-small" onClick={() => handleDelete(entry.id)}>Да</button>
+                    <button className="icon-btn btn-small" onClick={() => setDeletingId(null)}>Нет</button>
                   </div>
                 ) : (
                   <button className="icon-btn" onClick={() => setDeletingId(entry.id)} title="Удалить"><Trash2 size={18} /></button>

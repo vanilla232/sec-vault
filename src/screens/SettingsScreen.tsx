@@ -26,7 +26,7 @@ export function SettingsScreen({ onLock }: Props) {
       await api.destroyVault(destroyPassword);
       setIsDestroyModalOpen(false);
       setDestroyPassword("");
-      onLock(); 
+      onLock();
     } catch (err) {
       const msg = String(err);
       if (msg.includes("decryption failed")) {
@@ -57,20 +57,20 @@ export function SettingsScreen({ onLock }: Props) {
       <div className="options-panel">
         <div className="field">
           <label className="field-label">Блокировка хранилища</label>
-          <span className="field-hint" style={{ marginBottom: "16px" }}>
+          <span className="field-hint mb-4">
             Вы можете вручную заблокировать хранилище в любой момент. Все данные будут удалены из оперативной памяти.
           </span>
-          <Button variant="danger" onClick={onLock} style={{ width: "100%" }}>
+          <Button variant="danger" onClick={onLock} className="w-full">
             Заблокировать хранилище
           </Button>
         </div>
 
         <div className="danger-zone">
-          <label className="field-label" style={{ color: "var(--danger)" }}>Опасная зона</label>
-          <span className="field-hint" style={{ marginBottom: "16px", display: "block" }}>
+          <label className="field-label danger-zone-label">Опасная зона</label>
+          <span className="field-hint danger-zone-text">
             Полное уничтожение хранилища. Все записи, а также сам файл с мастер-паролем будут удалены навсегда. Приложение вернется к заводским настройкам.
           </span>
-          <Button variant="danger" onClick={() => setIsDestroyModalOpen(true)} style={{ width: "100%" }}>
+          <Button variant="danger" onClick={() => setIsDestroyModalOpen(true)} className="w-full">
             Удалить хранилище полностью
           </Button>
         </div>
@@ -82,14 +82,8 @@ export function SettingsScreen({ onLock }: Props) {
         title="Уничтожение хранилища"
         actions={
           <>
-            <Button onClick={closeModal} disabled={isDestroying}>
-              Отмена
-            </Button>
-            <Button
-              variant="danger"
-              onClick={handleDestroySubmit}
-              disabled={!destroyPassword || isDestroying}
-            >
+            <Button onClick={closeModal} disabled={isDestroying}>Отмена</Button>
+            <Button variant="danger" onClick={handleDestroySubmit} disabled={!destroyPassword || isDestroying}>
               {isDestroying ? <span className="spinner" /> : "Уничтожить навсегда"}
             </Button>
           </>

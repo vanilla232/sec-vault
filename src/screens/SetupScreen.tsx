@@ -39,54 +39,29 @@ export function SetupScreen({ onInitialized }: Props) {
       <form className="screen-card form-stack" onSubmit={handleSubmit}>
         <h1 className="screen-title">Создание хранилища</h1>
         <p className="screen-text">
-          Придумайте мастер-пароль для шифрования хранилища. Восстановить его
-          невозможно.
+          Придумайте мастер-пароль для шифрования хранилища. Восстановить его невозможно.
         </p>
 
         <Field label="Мастер-пароль" hint="Минимум 12 символов">
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            autoFocus
-          />
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} autoFocus />
         </Field>
 
         <div className="strength-meter">
           <div className="strength-bar">
             {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className={`strength-segment ${
-                  i <= strength.score ? `filled-${strength.level}` : ""
-                }`}
-              />
+              <div key={i} className={`strength-segment ${i <= strength.score ? `filled-${strength.level}` : ""}`} />
             ))}
           </div>
           <span className="strength-text">{strength.label}</span>
         </div>
 
-        <Field
-          label="Подтверждение"
-          error={!matchOk && confirm.length > 0 ? "Пароли не совпадают" : undefined}
-        >
-          <Input
-            type="password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            disabled={loading}
-          />
+        <Field label="Подтверждение" error={!matchOk && confirm.length > 0 ? "Пароли не совпадают" : undefined}>
+          <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} disabled={loading} />
         </Field>
 
         {error && <p className="error-text">{error}</p>}
 
-        <Button
-          type="submit"
-          variant="primary"
-          className="form-submit"
-          disabled={!isValid || loading}
-        >
+        <Button type="submit" variant="primary" className="form-submit" disabled={!isValid || loading}>
           {loading ? <span className="spinner" /> : "Создать хранилище"}
         </Button>
       </form>

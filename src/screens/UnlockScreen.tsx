@@ -38,28 +38,15 @@ export function UnlockScreen({ onUnlocked }: Props) {
     <div className="screen-center">
       <form className="screen-card form-stack" onSubmit={handleSubmit}>
         <h1 className="screen-title">Разблокировка</h1>
-        <p className="screen-text">
-          Введите мастер-пароль для доступа к хранилищу.
-        </p>
+        <p className="screen-text">Введите мастер-пароль для доступа к хранилищу.</p>
 
         <Field label="Мастер-пароль">
-          <Input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
-            autoFocus
-          />
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} autoFocus />
         </Field>
 
         {error && <p className="error-text">{error}</p>}
 
-        <Button
-          type="submit"
-          variant="primary"
-          className="form-submit"
-          disabled={!password || loading}
-        >
+        <Button type="submit" variant="primary" className="form-submit" disabled={!password || loading}>
           {loading ? <span className="spinner" /> : "Разблокировать"}
         </Button>
       </form>
