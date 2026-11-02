@@ -13,6 +13,7 @@ use crate::errors::VaultError;
 const FORMAT_VERSION: u32 = 1;
 const KDF_ALGO: &str = "argon2id";
 
+// Структуры файла хранилища
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VaultFile {
     pub version: u32,
@@ -37,6 +38,18 @@ impl KdfMetadata {
             t_cost: self.t_cost,
             p_cost: self.p_cost,
         }
+    }
+
+    // Собираем AAD из метаданных для защиты заголовка от подмены
+    fn to_aad(&self, version: u32) -> Vec<u8> {
+        let mut aad = Vec::new();
+        aad.extend_from_slice(&version.to_le_bytes());
+        aad.extend_from_slice(self.algo.as_bytes());
+        aad.extend_from_slice(&self.m_cost_kib.to_le_bytes());
+        aad.extend_from_slice(&self.t_cost.to_le_bytes());
+        aad.extend_from_slice(&self.p_cost.to_le_bytes());
+        aad.extend_from_slice(self.salt.as_bytes());
+        aad
     }
 }
 
@@ -63,6 +76,7 @@ pub struct Session {
     payload: VaultPayload,
 }
 
+// Логика сессии
 impl Session {
     pub fn create(path: PathBuf, password: &str, params: KdfParams) -> Result<Self, VaultError> {
         if path.exists() {
@@ -112,7 +126,10 @@ impl Session {
 
         let ciphertext = B64.decode(&file.ciphertext)?;
         let key = crypto::derive_key(password, &salt, &file.kdf.to_params())?;
-        let plaintext = crypto::decrypt(&key, &nonce, &ciphertext)?;
+        
+        let aad = file.kdf.to_aad(file.version);
+        let plaintext = crypto::decrypt(&key, &nonce, &ciphertext, &aad)?;
+        
         let payload: VaultPayload = serde_json::from_slice(&plaintext)?;
 
         Ok(Session {
@@ -125,7 +142,9 @@ impl Session {
 
     fn persist(&self) -> Result<(), VaultError> {
         let plaintext = serde_json::to_vec(&self.payload)?;
-        let (nonce, ciphertext) = crypto::encrypt(&self.key, &plaintext)?;
+        
+        let aad = self.kdf.to_aad(FORMAT_VERSION);
+        let (nonce, ciphertext) = crypto::encrypt(&self.key, &plaintext, &aad)?;
 
         let file = VaultFile {
             version: FORMAT_VERSION,
@@ -238,6 +257,7 @@ impl Session {
     }
 }
 
+// Атомарная запись с бэкапом
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "no parent directory")
@@ -268,6 +288,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), VaultError> {
     Ok(())
 }
 
+// Тесты
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn tampered_vault_file_fails_to_unlock() {
+    fn tampered_ciphertext_fails_to_unlock() {
         let dir = TempDir::new().unwrap();
         let path = new_path(&dir);
         Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
@@ -321,6 +342,23 @@ mod tests {
         let mut ct = B64.decode(&file.ciphertext).unwrap();
         ct[0] ^= 0x01;
         file.ciphertext = B64.encode(&ct);
+        
+        fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
+
+        let err = Session::unlock(path, "master123456");
+        assert!(matches!(err, Err(VaultError::Crypto(_))));
+    }
+
+    #[test]
+    fn tampered_kdf_params_fails_to_unlock() {
+        let dir = TempDir::new().unwrap();
+        let path = new_path(&dir);
+        Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
+
+        let raw = fs::read(&path).unwrap();
+        let mut file: VaultFile = serde_json::from_slice(&raw).unwrap();
+
+        file.kdf.m_cost_kib = 1;
         
         fs::write(&path, serde_json::to_vec(&file).unwrap()).unwrap();
 

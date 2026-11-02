@@ -1,5 +1,5 @@
 use aes_gcm::{
-    aead::{Aead, KeyInit},
+    aead::{Aead, KeyInit, Payload},
     Aes256Gcm, Nonce,
 };
 use argon2::{Algorithm, Argon2, Params, Version};
@@ -32,12 +32,14 @@ impl Default for KdfParams {
 
 pub type SecretKey = SecretBox<[u8; KEY_LEN]>;
 
+// Генерация соли
 pub fn generate_salt() -> [u8; SALT_LEN] {
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
     salt
 }
 
+// Деривация ключа
 pub fn derive_key(
     master_password: &str,
     salt: &[u8],
@@ -55,30 +57,30 @@ pub fn derive_key(
         .map_err(|_| CryptoError::Kdf)?;
 
     let secret = SecretBox::new(Box::new(key_bytes));
-    
-    // Гарантируем зануление исходного массива до его удаления из стека
     key_bytes.zeroize();
     
     Ok(secret)
 }
 
-pub fn encrypt(key: &SecretKey, plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
+// Шифрование (с AAD)
+pub fn encrypt(key: &SecretKey, plaintext: &[u8], aad: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     let cipher = Aes256Gcm::new_from_slice(key.expose_secret().as_slice())
         .map_err(|_| CryptoError::InvalidKey)?;
 
-    // Критично: генерируем уникальный nonce на каждое шифрование (GCM не прощает повторного использования)
     let mut nonce_bytes = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
+    let payload = Payload { msg: plaintext, aad };
     let ciphertext = cipher
-        .encrypt(nonce, plaintext)
+        .encrypt(nonce, payload)
         .map_err(|_| CryptoError::Encrypt)?;
 
     Ok((nonce_bytes.to_vec(), ciphertext))
 }
 
-pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError> {
+// Дешифрование (с AAD)
+pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8], aad: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if nonce.len() != NONCE_LEN {
         return Err(CryptoError::InvalidNonce);
     }
@@ -87,21 +89,20 @@ pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u
         .map_err(|_| CryptoError::InvalidKey)?;
 
     let nonce = Nonce::from_slice(nonce);
+    let payload = Payload { msg: ciphertext, aad };
+    
     cipher
-        .decrypt(nonce, ciphertext)
+        .decrypt(nonce, payload)
         .map_err(|_| CryptoError::Decrypt)
 }
 
+// Тесты
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn fast_kdf() -> KdfParams {
-        KdfParams {
-            m_cost_kib: 4096,
-            t_cost: 1,
-            p_cost: 1,
-        }
+        KdfParams { m_cost_kib: 4096, t_cost: 1, p_cost: 1 }
     }
 
     #[test]
@@ -140,16 +141,17 @@ mod tests {
     fn roundtrip_encrypt_decrypt() {
         let salt = generate_salt();
         let key = derive_key("correct horse battery staple", &salt, &fast_kdf()).unwrap();
+        let aad = b"header_data";
         
         let test_cases = vec![
             b"the answer is 42".to_vec(),
-            b"".to_vec(), // Пустой массив
+            b"".to_vec(),
             "Юникод текст 🔒".as_bytes().to_vec(),
         ];
 
         for msg in test_cases {
-            let (nonce, ct) = encrypt(&key, &msg).unwrap();
-            let pt = decrypt(&key, &nonce, &ct).unwrap();
+            let (nonce, ct) = encrypt(&key, &msg, aad).unwrap();
+            let pt = decrypt(&key, &nonce, &ct, aad).unwrap();
             assert_eq!(pt, msg);
         }
     }
@@ -159,49 +161,57 @@ mod tests {
         let salt = generate_salt();
         let k1 = derive_key("a", &salt, &fast_kdf()).unwrap();
         let k2 = derive_key("b", &salt, &fast_kdf()).unwrap();
-        let (nonce, ct) = encrypt(&k1, b"data").unwrap();
+        let (nonce, ct) = encrypt(&k1, b"data", b"").unwrap();
         
-        assert!(matches!(decrypt(&k2, &nonce, &ct), Err(CryptoError::Decrypt)));
+        assert!(matches!(decrypt(&k2, &nonce, &ct, b""), Err(CryptoError::Decrypt)));
     }
 
     #[test]
     fn tampered_ciphertext_fails() {
         let salt = generate_salt();
         let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
-        let (nonce, mut ct) = encrypt(&key, b"data").unwrap();
+        let (nonce, mut ct) = encrypt(&key, b"data", b"").unwrap();
         
         if let Some(byte) = ct.last_mut() {
             *byte ^= 0x01;
         }
         
-        assert!(matches!(decrypt(&key, &nonce, &ct), Err(CryptoError::Decrypt)));
+        assert!(matches!(decrypt(&key, &nonce, &ct, b""), Err(CryptoError::Decrypt)));
+    }
+
+    #[test]
+    fn tampered_aad_fails() {
+        let salt = generate_salt();
+        let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
+        let (nonce, ct) = encrypt(&key, b"data", b"original_aad").unwrap();
+        
+        assert!(matches!(decrypt(&key, &nonce, &ct, b"tampered_aad"), Err(CryptoError::Decrypt)));
     }
 
     #[test]
     fn tampered_nonce_fails() {
         let salt = generate_salt();
         let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
-        let (mut nonce, ct) = encrypt(&key, b"data").unwrap();
+        let (mut nonce, ct) = encrypt(&key, b"data", b"").unwrap();
         
         nonce[0] ^= 0x01;
         
-        assert!(matches!(decrypt(&key, &nonce, &ct), Err(CryptoError::Decrypt)));
+        assert!(matches!(decrypt(&key, &nonce, &ct, b""), Err(CryptoError::Decrypt)));
     }
 
     #[test]
     fn nonce_is_unique() {
         let salt = generate_salt();
         let key = derive_key("pass", &salt, &fast_kdf()).unwrap();
-        let (n1, ct1) = encrypt(&key, b"x").unwrap();
-        let (n2, ct2) = encrypt(&key, b"x").unwrap();
+        let (n1, ct1) = encrypt(&key, b"x", b"").unwrap();
+        let (n2, ct2) = encrypt(&key, b"x", b"").unwrap();
         
         assert_ne!(n1, n2);
         assert_ne!(ct1, ct2);
     }
 
-        #[test]
+    #[test]
     fn known_answer_test_nist_aes256gcm() {
-        // Вектор из NIST SP 800-38D (AES-256-GCM, Test Case 2, нулевой ключ/IV/данные)
         let key_hex = "0000000000000000000000000000000000000000000000000000000000000000";
         let nonce_hex = "000000000000000000000000";
         let pt_hex = "00000000000000000000000000000000";
@@ -215,8 +225,17 @@ mod tests {
         let pt = hex::decode(pt_hex).unwrap();
         let expected_ct = hex::decode(expected_ct_hex).unwrap();
 
-        // Проверка, что модуль корректно расшифровывает эталонный шифротекст NIST
-        let decrypted = decrypt(&key, &nonce, &expected_ct).unwrap();
+        let decrypted = decrypt(&key, &nonce, &expected_ct, b"").unwrap();
         assert_eq!(decrypted, pt);
+    }
+
+    #[test]
+    fn secrets_do_not_leak_via_debug() {
+        let salt = [0u8; SALT_LEN];
+        let key = derive_key("my_secret_pw", &salt, &fast_kdf()).unwrap();
+        let debug_str = format!("{:?}", key);
+        
+        assert!(!debug_str.contains("my_secret_pw"));
+        assert!(!debug_str.contains(&format!("{:?}", key.expose_secret())));
     }
 }
