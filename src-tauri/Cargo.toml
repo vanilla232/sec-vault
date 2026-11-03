@@ -1,6 +1,6 @@
 [package]
 name = "sec-vault"
-version = "0.1.0"
+version = "0.2.0"
 description = "Paranoid local encrypted secret vault"
 authors = ["you"]
 edition = "2021"
