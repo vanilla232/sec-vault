@@ -29,3 +29,5 @@ Thumbs.db
 *.sw?
 *.tmp
 *.temp
+checksums.txt
+checksums.txt.asc
