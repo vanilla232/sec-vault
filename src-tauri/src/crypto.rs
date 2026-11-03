@@ -57,6 +57,7 @@ pub fn derive_key(
         .hash_password_into(master_password.as_bytes(), salt, &mut key_bytes)
         .map_err(|_| CryptoError::Kdf)?;
 
+    #[allow(unused_mut)]
     let mut boxed_key = Box::new(key_bytes);
     
     #[cfg(windows)]
@@ -78,6 +79,7 @@ pub fn encrypt(key: &SecretKey, plaintext: &[u8], aad: &[u8]) -> Result<(Vec<u8>
     let cipher = Aes256Gcm::new_from_slice(key.expose_secret().as_slice())
         .map_err(|_| CryptoError::InvalidKey)?;
 
+    // Критично: генерируем уникальный nonce на каждое шифрование (GCM не прощает повторного использования)
     let mut nonce_bytes = [0u8; NONCE_LEN];
     OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);

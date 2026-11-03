@@ -5,7 +5,9 @@ pub mod generator;
 pub mod state;
 pub mod vault;
 
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+#[cfg(windows)]
+use tauri::Emitter;
 
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
