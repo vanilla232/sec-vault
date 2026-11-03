@@ -102,7 +102,7 @@ pub fn create_entry(
     note: String,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.add_entry(title, password.expose_secret().to_string(), note)?;
+        let entry = session.add_entry(title, password, note)?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -116,12 +116,7 @@ pub fn update_entry(
     note: Option<String>,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.update_entry(
-            &id,
-            title,
-            password.map(|p| p.expose_secret().to_string()),
-            note,
-        )?;
+        let entry = session.update_entry(&id, title, password, note)?;
         Ok(EntryMeta::from(&entry))
     })
 }
