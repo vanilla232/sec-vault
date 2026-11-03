@@ -4,6 +4,21 @@ use std::time::Duration;
 use secrecy::{ExposeSecret, SecretString};
 use tauri::State;
 
+#[cfg(windows)]
+use windows::core::PCWSTR;
+#[cfg(windows)]
+use windows::Win32::Foundation::{HANDLE, HWND};
+#[cfg(windows)]
+use windows::Win32::System::DataExchange::{
+    CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+};
+#[cfg(windows)]
+use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::{
+    SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+};
+
 use crate::crypto::KdfParams;
 use crate::errors::AppError;
 use crate::generator::{self, GenOptions};
@@ -141,8 +156,19 @@ pub fn generate_password(opts: GenOptions) -> Result<String, AppError> {
 
 #[tauri::command]
 pub fn copy_to_clipboard(text: String, clear_after_secs: u64) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| AppError::InvalidInput(e.to_string()))?;
-    clipboard.set_text(text.clone()).map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    #[cfg(windows)]
+    {
+        write_clipboard_private(&text)?;
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut clipboard =
+            arboard::Clipboard::new().map_err(|e| AppError::InvalidInput(e.to_string()))?;
+        clipboard
+            .set_text(text.clone())
+            .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    }
 
     if clear_after_secs > 0 {
         thread::spawn(move || {
@@ -156,6 +182,100 @@ pub fn copy_to_clipboard(text: String, clear_after_secs: u64) -> Result<(), AppE
             }
         });
     }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn write_clipboard_private(text: &str) -> Result<(), AppError> {
+    let mut utf16: Vec<u16> = text.encode_utf16().collect();
+    utf16.push(0);
+
+    unsafe {
+        OpenClipboard(None).map_err(|e| AppError::InvalidInput(format!("OpenClipboard: {e}")))?;
+        
+
+        let result = (|| -> Result<(), AppError> {
+            let _ = EmptyClipboard();
+
+            let text_mem = GlobalAlloc(GMEM_MOVEABLE, utf16.len() * std::mem::size_of::<u16>())
+                .map_err(|e| AppError::InvalidInput(format!("GlobalAlloc text: {e}")))?;
+            let dst = GlobalLock(text_mem);
+            if dst.is_null() {
+                return Err(AppError::InvalidInput("GlobalLock text".into()));
+            }
+            std::ptr::copy_nonoverlapping(utf16.as_ptr(), dst as *mut u16, utf16.len());
+            let _ = GlobalUnlock(text_mem);
+
+            if SetClipboardData(13, HANDLE(text_mem.0)).is_err() {
+                return Err(AppError::InvalidInput("SetClipboardData CF_UNICODETEXT".into()));
+            }
+
+
+            for name in [
+                "ExcludeClipboardContentFromMonitorProcessing",
+                "CanIncludeInClipboardHistory",
+                "CanUploadToCloudClipboard",
+            ] {
+                let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+                let fmt = RegisterClipboardFormatW(PCWSTR(wide.as_ptr()));
+                if fmt == 0 {
+                    return Err(AppError::InvalidInput(format!("RegisterClipboardFormatW {name}")));
+                }
+
+                let mem = GlobalAlloc(GMEM_MOVEABLE, std::mem::size_of::<u32>())
+                    .map_err(|e| AppError::InvalidInput(format!("GlobalAlloc {name}: {e}")))?;
+                let ptr = GlobalLock(mem);
+                if ptr.is_null() {
+                    return Err(AppError::InvalidInput(format!("GlobalLock {name}")));
+                }
+                // Значение DWORD 0 отключает обработку формата.
+                std::ptr::write(ptr as *mut u32, 0u32);
+                let _ = GlobalUnlock(mem);
+
+                if SetClipboardData(fmt, HANDLE(mem.0)).is_err() {
+                    return Err(AppError::InvalidInput(format!("SetClipboardData {name}")));
+                }
+            }
+
+            Ok(())
+        })();
+
+        let _ = CloseClipboard();
+        result?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_window_content_protection(
+    window: tauri::Window,
+    enabled: bool,
+) -> Result<(), AppError> {
+    #[cfg(windows)]
+    {
+        let tauri_hwnd = window.hwnd().map_err(|e| AppError::InvalidInput(e.to_string()))?;
+        // В windows v0.58 HWND ожидает *mut c_void
+        let hwnd = HWND(tauri_hwnd.0 as *mut _);
+        
+        let affinity = if enabled {
+            WDA_EXCLUDEFROMCAPTURE
+        } else {
+            WDA_NONE
+        };
+
+        unsafe {
+            SetWindowDisplayAffinity(hwnd, affinity)
+                .map_err(|e| AppError::InvalidInput(format!("SetWindowDisplayAffinity: {e}")))?;
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = (window, enabled);
+    }
+
     Ok(())
 }
 
