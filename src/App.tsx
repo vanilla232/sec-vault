@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { api } from "./lib/api";
 import type { VaultStatus } from "./lib/types";
 import { Sidebar, type Tab } from "./components/Sidebar";
@@ -35,6 +36,15 @@ export default function App() {
 
   useEffect(() => {
     refreshStatus();
+
+    const unlistenPromise = listen("vault-locked", () => {
+      refreshStatus();
+      setTab("vault");
+    });
+
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [refreshStatus]);
 
   if (error) {

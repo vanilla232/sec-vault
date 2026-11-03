@@ -5,10 +5,14 @@ pub mod generator;
 pub mod state;
 pub mod vault;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
+#[cfg(windows)]
+use windows::Win32::System::StationsAndDesktops::{
+    CloseDesktop, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS,
+};
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
     SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE,
@@ -35,6 +39,35 @@ pub fn run() {
                         }
                     }
                 }
+
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut was_locked = false;
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        
+                        let hdesk = unsafe { 
+                            OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) 
+                        };
+                        let is_locked = hdesk.is_err();
+                        
+                        if let Ok(h) = hdesk {
+                            let _ = unsafe { CloseDesktop(h) };
+                        }
+
+                        if is_locked && !was_locked {
+                            was_locked = true;
+                            if let Some(app_state) = app_handle.try_state::<state::AppState>() {
+                                if app_state.is_unlocked() {
+                                    let _ = app_state.take_session();
+                                    let _ = app_handle.emit("vault-locked", ());
+                                }
+                            }
+                        } else if !is_locked {
+                            was_locked = false;
+                        }
+                    }
+                });
             }
 
             Ok(())
