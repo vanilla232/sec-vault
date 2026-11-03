@@ -7,6 +7,9 @@ use rand::{rngs::OsRng, RngCore};
 use secrecy::{ExposeSecret, SecretBox};
 use zeroize::Zeroize;
 
+#[cfg(windows)]
+use windows::Win32::System::Memory::VirtualLock;
+
 use crate::errors::CryptoError;
 
 pub const SALT_LEN: usize = 16;
@@ -32,14 +35,12 @@ impl Default for KdfParams {
 
 pub type SecretKey = SecretBox<[u8; KEY_LEN]>;
 
-// Генерация соли
 pub fn generate_salt() -> [u8; SALT_LEN] {
     let mut salt = [0u8; SALT_LEN];
     OsRng.fill_bytes(&mut salt);
     salt
 }
 
-// Деривация ключа
 pub fn derive_key(
     master_password: &str,
     salt: &[u8],
@@ -56,13 +57,23 @@ pub fn derive_key(
         .hash_password_into(master_password.as_bytes(), salt, &mut key_bytes)
         .map_err(|_| CryptoError::Kdf)?;
 
-    let secret = SecretBox::new(Box::new(key_bytes));
+    let mut boxed_key = Box::new(key_bytes);
+    
+    #[cfg(windows)]
+    unsafe {
+        // Блокируем страницу памяти с ключом, чтобы ОС не сбросила её в файл подкачки
+        let ptr = boxed_key.as_mut_ptr() as *mut _;
+        let _ = VirtualLock(ptr, KEY_LEN);
+    }
+
+    let secret = SecretBox::new(boxed_key);
+    
+    // Гарантируем зануление исходного массива до его удаления из стека
     key_bytes.zeroize();
     
     Ok(secret)
 }
 
-// Шифрование (с AAD)
 pub fn encrypt(key: &SecretKey, plaintext: &[u8], aad: &[u8]) -> Result<(Vec<u8>, Vec<u8>), CryptoError> {
     let cipher = Aes256Gcm::new_from_slice(key.expose_secret().as_slice())
         .map_err(|_| CryptoError::InvalidKey)?;
@@ -79,7 +90,6 @@ pub fn encrypt(key: &SecretKey, plaintext: &[u8], aad: &[u8]) -> Result<(Vec<u8>
     Ok((nonce_bytes.to_vec(), ciphertext))
 }
 
-// Дешифрование (с AAD)
 pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8], aad: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if nonce.len() != NONCE_LEN {
         return Err(CryptoError::InvalidNonce);
@@ -96,7 +106,6 @@ pub fn decrypt(key: &SecretKey, nonce: &[u8], ciphertext: &[u8], aad: &[u8]) -> 
         .map_err(|_| CryptoError::Decrypt)
 }
 
-// Тесты
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -10,6 +10,10 @@ use tauri::{Emitter, Manager};
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
 #[cfg(windows)]
+use windows::Win32::System::Diagnostics::Debug::{
+    SetErrorMode, SEM_FAILCRITICALERRORS, SEM_NOGPFAULTERRORBOX, SEM_NOOPENFILEERRORBOX,
+};
+#[cfg(windows)]
 use windows::Win32::System::StationsAndDesktops::{
     CloseDesktop, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS,
 };
@@ -20,6 +24,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    unsafe {
+        // Запрещает создание дампов памяти и окон с ошибкой при краше
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
