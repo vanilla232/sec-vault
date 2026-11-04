@@ -35,4 +35,6 @@ export const api = {
     invoke<void>("destroy_vault", { masterPassword }),
 
   importCsv: () => invoke<number>("import_csv"),
+  exportEncrypted: () => invoke<boolean>("export_encrypted"),
+  exportCsv: () => invoke<boolean>("export_csv"),
 };

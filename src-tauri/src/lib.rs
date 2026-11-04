@@ -98,6 +98,8 @@ pub fn run() {
             commands::destroy_vault,
             commands::set_window_content_protection,
             commands::import_csv,
+            commands::export_encrypted,
+            commands::export_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

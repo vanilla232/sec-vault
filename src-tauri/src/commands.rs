@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 use secrecy::{ExposeSecret, SecretString};
 use tauri::State;
-use csv::ReaderBuilder;
+use csv::{ReaderBuilder, WriterBuilder};
 
 #[cfg(windows)]
 use windows::core::PCWSTR;
@@ -312,7 +312,6 @@ pub async fn import_csv(state: State<'_, AppState>) -> Result<usize, AppError> {
     let idx_url = headers.iter().position(|h| h == "url" || h == "login_uri");
     let idx_note = headers.iter().position(|h| h == "note" || h == "notes");
 
-    // Парсим файл в память до захвата мьютекса, чтобы не блокировать UI на время I/O
     let mut parsed_entries = Vec::new();
     for result in rdr.records() {
         if let Ok(record) = result {
@@ -331,7 +330,6 @@ pub async fn import_csv(state: State<'_, AppState>) -> Result<usize, AppError> {
     let mut imported_count = 0;
     state.with_session_mut(|session| {
         for (title, username, password, url, note) in parsed_entries {
-            // Пропускаем дубликаты по названию, чтобы не засорять хранилище
             if !session.list_entries().iter().any(|e| e.title == title) {
                 let _ = session.add_entry(
                     title,
@@ -347,6 +345,64 @@ pub async fn import_csv(state: State<'_, AppState>) -> Result<usize, AppError> {
     })?;
 
     Ok(imported_count)
+}
+
+#[tauri::command]
+pub async fn export_encrypted(state: State<'_, AppState>) -> Result<bool, AppError> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name("vault_backup.enc")
+        .add_filter("SecVault Backup", &["enc"])
+        .save_file()
+        .await;
+
+    let dest_path = match file {
+        Some(f) => f.path().to_path_buf(),
+        None => return Ok(false),
+    };
+
+    // Копируем зашифрованный файл напрямую, не расшифровывая его в памяти
+    std::fs::copy(&state.vault_path, &dest_path)
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn export_csv(state: State<'_, AppState>) -> Result<bool, AppError> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name("secvault_export.csv")
+        .add_filter("CSV", &["csv"])
+        .save_file()
+        .await;
+
+    let dest_path = match file {
+        Some(f) => f.path().to_path_buf(),
+        None => return Ok(false),
+    };
+
+    let mut wtr = WriterBuilder::new()
+        .has_headers(true)
+        .from_path(&dest_path)
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+
+    wtr.write_record(&["name", "username", "password", "url", "note"])
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+
+    state.with_session(|session| {
+        for entry in session.list_entries() {
+            wtr.write_record(&[
+                &entry.title,
+                &entry.username,
+                entry.password.expose_secret(),
+                &entry.url,
+                &entry.note,
+            ]).map_err(|e| AppError::InvalidInput(e.to_string()))?;
+        }
+        Ok(())
+    })?;
+
+    wtr.flush().map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    Ok(true)
 }
 
 #[tauri::command]
