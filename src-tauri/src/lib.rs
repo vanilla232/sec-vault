@@ -28,7 +28,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub fn run() {
     #[cfg(windows)]
     unsafe {
-        // Запрещает создание дампов памяти и окон с ошибкой при краше
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     }
 
@@ -98,6 +97,7 @@ pub fn run() {
             commands::copy_to_clipboard,
             commands::destroy_vault,
             commands::set_window_content_protection,
+            commands::import_csv,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,6 +14,21 @@ export function SettingsScreen({ onLock }: Props) {
   const [destroyPassword, setDestroyPassword] = useState("");
   const [destroyError, setDestroyError] = useState<string | null>(null);
   const [isDestroying, setIsDestroying] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const handleImport = async () => {
+    setIsImporting(true);
+    try {
+      const count = await api.importCsv();
+      if (count > 0) {
+        alert(`Успешно импортировано записей: ${count}`);
+      }
+    } catch (e) {
+      alert(`Ошибка импорта: ${e}`);
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handleDestroySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +71,16 @@ export function SettingsScreen({ onLock }: Props) {
 
       <div className="options-panel">
         <div className="field">
+          <label className="field-label">Импорт данных</label>
+          <span className="field-hint mb-4">
+            Загрузите CSV файл из Chrome, Edge или Bitwarden. Существующие записи с такими же названиями будут пропущены.
+          </span>
+          <Button onClick={handleImport} disabled={isImporting} className="w-full">
+            {isImporting ? "Импорт..." : "Импортировать из CSV"}
+          </Button>
+        </div>
+
+        <div className="field">
           <label className="field-label">Блокировка хранилища</label>
           <span className="field-hint mb-4">
             Вы можете вручную заблокировать хранилище в любой момент. Все данные будут удалены из оперативной памяти.
@@ -68,7 +93,7 @@ export function SettingsScreen({ onLock }: Props) {
         <div className="danger-zone">
           <label className="field-label danger-zone-label">Опасная зона</label>
           <span className="field-hint danger-zone-text">
-            Полное уничтожение хранилища. Все записи, а также сам файл с мастер-паролем будут удалены навсегда. Приложение вернется к заводским настройкам.
+            Полное уничтожение хранилища. Все записи, а также сам файл с мастер-паролем будут удалены навсегда.
           </span>
           <Button variant="danger" onClick={() => setIsDestroyModalOpen(true)} className="w-full">
             Удалить хранилище полностью

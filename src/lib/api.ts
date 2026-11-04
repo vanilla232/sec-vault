@@ -33,4 +33,6 @@ export const api = {
 
   destroyVault: (masterPassword: string) =>
     invoke<void>("destroy_vault", { masterPassword }),
+
+  importCsv: () => invoke<number>("import_csv"),
 };

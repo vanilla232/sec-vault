@@ -3,6 +3,7 @@ use std::thread;
 use std::time::Duration;
 use secrecy::{ExposeSecret, SecretString};
 use tauri::State;
+use csv::ReaderBuilder;
 
 #[cfg(windows)]
 use windows::core::PCWSTR;
@@ -202,7 +203,6 @@ fn write_clipboard_private(text: &str) -> Result<(), AppError> {
     unsafe {
         OpenClipboard(None).map_err(|e| AppError::InvalidInput(format!("OpenClipboard: {e}")))?;
         
-        // Оборачиваем в замыкание, чтобы гарантировать закрытие буфера при любой ошибке
         let result = (|| -> Result<(), AppError> {
             let _ = EmptyClipboard();
 
@@ -219,7 +219,6 @@ fn write_clipboard_private(text: &str) -> Result<(), AppError> {
                 return Err(AppError::InvalidInput("SetClipboardData CF_UNICODETEXT".into()));
             }
 
-            // Запрет сохранения в историю Windows (Win+V) и облачную синхронизацию.
             for name in [
                 "ExcludeClipboardContentFromMonitorProcessing",
                 "CanIncludeInClipboardHistory",
@@ -237,7 +236,6 @@ fn write_clipboard_private(text: &str) -> Result<(), AppError> {
                 if ptr.is_null() {
                     return Err(AppError::InvalidInput(format!("GlobalLock {name}")));
                 }
-                // Значение DWORD 0 отключает обработку формата.
                 std::ptr::write(ptr as *mut u32, 0u32);
                 let _ = GlobalUnlock(mem);
 
@@ -284,6 +282,71 @@ pub fn set_window_content_protection(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn import_csv(state: State<'_, AppState>) -> Result<usize, AppError> {
+    let file = rfd::AsyncFileDialog::new()
+        .add_filter("CSV", &["csv"])
+        .set_title("Выберите CSV файл для импорта")
+        .pick_file()
+        .await;
+
+    let file_path = match file {
+        Some(f) => f.path().to_path_buf(),
+        None => return Ok(0),
+    };
+
+    let mut rdr = ReaderBuilder::new()
+        .has_headers(true)
+        .from_path(&file_path)
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+
+    let headers = rdr.headers()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?
+        .clone();
+
+    let idx_title = headers.iter().position(|h| h == "name").ok_or_else(|| AppError::InvalidInput("Не найден столбец 'name'".into()))?;
+    let idx_password = headers.iter().position(|h| h == "password" || h == "login_password").ok_or_else(|| AppError::InvalidInput("Не найден столбец 'password'".into()))?;
+    let idx_username = headers.iter().position(|h| h == "username" || h == "login_username");
+    let idx_url = headers.iter().position(|h| h == "url" || h == "login_uri");
+    let idx_note = headers.iter().position(|h| h == "note" || h == "notes");
+
+    // Парсим файл в память до захвата мьютекса, чтобы не блокировать UI на время I/O
+    let mut parsed_entries = Vec::new();
+    for result in rdr.records() {
+        if let Ok(record) = result {
+            let title = record.get(idx_title).unwrap_or("").to_string();
+            if title.is_empty() { continue; }
+
+            let password = record.get(idx_password).unwrap_or("").to_string();
+            let username = idx_username.and_then(|i| record.get(i)).unwrap_or("").to_string();
+            let url = idx_url.and_then(|i| record.get(i)).unwrap_or("").to_string();
+            let note = idx_note.and_then(|i| record.get(i)).unwrap_or("").to_string();
+
+            parsed_entries.push((title, username, password, url, note));
+        }
+    }
+
+    let mut imported_count = 0;
+    state.with_session_mut(|session| {
+        for (title, username, password, url, note) in parsed_entries {
+            // Пропускаем дубликаты по названию, чтобы не засорять хранилище
+            if !session.list_entries().iter().any(|e| e.title == title) {
+                let _ = session.add_entry(
+                    title,
+                    username,
+                    SecretString::from(password),
+                    url,
+                    note,
+                );
+                imported_count += 1;
+            }
+        }
+        Ok(())
+    })?;
+
+    Ok(imported_count)
 }
 
 #[tauri::command]
