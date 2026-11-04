@@ -182,3 +182,11 @@ button.danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .mt-2 { margin-top: 8px; }
 .w-full { width: 100%; }
 .divider-top { border-top: 1px solid var(--border); padding-top: 16px; }
+
+.vault-username {
+  color: var(--text-dim);
+  width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

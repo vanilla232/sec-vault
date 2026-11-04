@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize,};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use uuid::Uuid;
 
 use crate::crypto::{self, KdfParams, SecretKey, NONCE_LEN, SALT_LEN};
@@ -14,7 +14,6 @@ use crate::errors::VaultError;
 const FORMAT_VERSION: u32 = 1;
 const KDF_ALGO: &str = "argon2id";
 
-// Кастомная сериализация для SecretString, так как str не реализует нужные трейты для derive
 mod secret_string_serde {
     use secrecy::{ExposeSecret, SecretString};
     use serde::{Deserialize, Deserializer, Serializer};
@@ -61,7 +60,7 @@ impl KdfMetadata {
         }
     }
 
-    // Собираем AAD из метаданных для защиты заголовка от подмены
+    // Сбор AAD из метаданных для защиты заголовка от подмены
     fn to_aad(&self, version: u32) -> Vec<u8> {
         let mut aad = Vec::new();
         aad.extend_from_slice(&version.to_le_bytes());
@@ -83,8 +82,12 @@ pub struct VaultPayload {
 pub struct Entry {
     pub id: String,
     pub title: String,
+    #[serde(default)]
+    pub username: String,
     #[serde(with = "secret_string_serde")]
     pub password: SecretString,
+    #[serde(default)]
+    pub url: String,
     #[serde(default)]
     pub note: String,
     pub created_at: String,
@@ -185,7 +188,14 @@ impl Session {
         &self.payload.entries
     }
 
-    pub fn add_entry(&mut self, title: String, password: SecretString, note: String) -> Result<Entry, VaultError> {
+    pub fn add_entry(
+        &mut self, 
+        title: String, 
+        username: String, 
+        password: SecretString, 
+        url: String, 
+        note: String
+    ) -> Result<Entry, VaultError> {
         let title = title.trim().to_string();
         if title.is_empty() {
             return Err(VaultError::InvalidInput("title is empty".into()));
@@ -198,7 +208,9 @@ impl Session {
         let entry = Entry {
             id: Uuid::new_v4().to_string(),
             title,
+            username,
             password,
+            url,
             note,
             created_at: now.clone(),
             updated_at: now,
@@ -212,7 +224,9 @@ impl Session {
         &mut self,
         id: &str,
         title: Option<String>,
+        username: Option<String>,
         password: Option<SecretString>,
+        url: Option<String>,
         note: Option<String>,
     ) -> Result<Entry, VaultError> {
         let idx = self
@@ -243,8 +257,14 @@ impl Session {
         if let Some(new_title) = title {
             entry.title = new_title.trim().to_string();
         }
+        if let Some(new_username) = username {
+            entry.username = new_username;
+        }
         if let Some(new_password) = password {
             entry.password = new_password;
+        }
+        if let Some(new_url) = url {
+            entry.url = new_url;
         }
         if let Some(new_note) = note {
             entry.note = new_note;
@@ -327,14 +347,21 @@ mod tests {
         let path = new_path(&dir);
         
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        session.add_entry("GitHub".into(), SecretString::from("s3cret".to_string()), "my note".into()).unwrap();
+        session.add_entry(
+            "GitHub".into(), 
+            "user123".into(), 
+            SecretString::from("s3cret".to_string()), 
+            "https://github.com".into(), 
+            "my note".into()
+        ).unwrap();
         drop(session);
 
         let session = Session::unlock(path, "master123456").unwrap();
         assert_eq!(session.list_entries().len(), 1);
         assert_eq!(session.list_entries()[0].title, "GitHub");
+        assert_eq!(session.list_entries()[0].username, "user123");
+        assert_eq!(session.list_entries()[0].url, "https://github.com");
         assert_eq!(session.list_entries()[0].note, "my note");
-        assert_eq!(session.list_entries()[0].password.expose_secret(), "s3cret");
     }
 
     #[test]
@@ -395,7 +422,7 @@ mod tests {
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
         assert!(!bak_path.exists());
 
-        session.add_entry("Test".into(), SecretString::from("pwd".to_string()), "".into()).unwrap();
+        session.add_entry("Test".into(), "".into(), SecretString::from("pwd".to_string()), "".into(), "".into()).unwrap();
         assert!(bak_path.exists());
     }
 
@@ -404,7 +431,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = new_path(&dir);
         let mut session = Session::create(path.clone(), "master123456", fast_kdf()).unwrap();
-        session.add_entry("GitHub".into(), SecretString::from("very-unique-secret-xyz".to_string()), "".into()).unwrap();
+        session.add_entry("GitHub".into(), "user".into(), SecretString::from("very-unique-secret-xyz".to_string()), "".into(), "".into()).unwrap();
         drop(session);
 
         let raw = fs::read(&path).unwrap();

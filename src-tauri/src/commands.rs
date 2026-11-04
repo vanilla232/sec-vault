@@ -37,6 +37,8 @@ pub struct VaultStatus {
 pub struct EntryMeta {
     pub id: String,
     pub title: String,
+    pub username: String,
+    pub url: String,
     pub note: String,
     pub created_at: String,
     pub updated_at: String,
@@ -47,6 +49,8 @@ impl From<&Entry> for EntryMeta {
         Self {
             id: e.id.clone(),
             title: e.title.clone(),
+            username: e.username.clone(),
+            url: e.url.clone(),
             note: e.note.clone(),
             created_at: e.created_at.clone(),
             updated_at: e.updated_at.clone(),
@@ -113,11 +117,13 @@ pub fn list_entries(state: State<'_, AppState>) -> Result<Vec<EntryMeta>, AppErr
 pub fn create_entry(
     state: State<'_, AppState>,
     title: String,
+    username: String,
     password: SecretString,
+    url: String,
     note: String,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.add_entry(title, password, note)?;
+        let entry = session.add_entry(title, username, password, url, note)?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -127,11 +133,13 @@ pub fn update_entry(
     state: State<'_, AppState>,
     id: String,
     title: Option<String>,
+    username: Option<String>,
     password: Option<SecretString>,
+    url: Option<String>,
     note: Option<String>,
 ) -> Result<EntryMeta, AppError> {
     state.with_session_mut(|session| {
-        let entry = session.update_entry(&id, title, password, note)?;
+        let entry = session.update_entry(&id, title, username, password, url, note)?;
         Ok(EntryMeta::from(&entry))
     })
 }
@@ -194,7 +202,7 @@ fn write_clipboard_private(text: &str) -> Result<(), AppError> {
     unsafe {
         OpenClipboard(None).map_err(|e| AppError::InvalidInput(format!("OpenClipboard: {e}")))?;
         
-
+        // Оборачиваем в замыкание, чтобы гарантировать закрытие буфера при любой ошибке
         let result = (|| -> Result<(), AppError> {
             let _ = EmptyClipboard();
 
@@ -211,7 +219,7 @@ fn write_clipboard_private(text: &str) -> Result<(), AppError> {
                 return Err(AppError::InvalidInput("SetClipboardData CF_UNICODETEXT".into()));
             }
 
-
+            // Запрет сохранения в историю Windows (Win+V) и облачную синхронизацию.
             for name in [
                 "ExcludeClipboardContentFromMonitorProcessing",
                 "CanIncludeInClipboardHistory",
@@ -256,7 +264,6 @@ pub fn set_window_content_protection(
     #[cfg(windows)]
     {
         let tauri_hwnd = window.hwnd().map_err(|e| AppError::InvalidInput(e.to_string()))?;
-        // В windows v0.58 HWND ожидает *mut c_void
         let hwnd = HWND(tauri_hwnd.0 as *mut _);
         
         let affinity = if enabled {

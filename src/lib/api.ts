@@ -14,11 +14,11 @@ export const api = {
 
   listEntries: () => invoke<EntryMeta[]>("list_entries"),
 
-  createEntry: (title: string, password: string, note: string) =>
-    invoke<EntryMeta>("create_entry", { title, password, note }),
+  createEntry: (title: string, username: string, password: string, url: string, note: string) =>
+    invoke<EntryMeta>("create_entry", { title, username, password, url, note }),
 
-  updateEntry: (id: string, title?: string, password?: string, note?: string) =>
-    invoke<EntryMeta>("update_entry", { id, title, password, note }),
+  updateEntry: (id: string, title?: string, username?: string, password?: string, url?: string, note?: string) =>
+    invoke<EntryMeta>("update_entry", { id, title, username, password, url, note }),
 
   deleteEntry: (id: string) => invoke<void>("delete_entry", { id }),
 

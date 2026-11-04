@@ -12,7 +12,9 @@ export function VaultScreen() {
   const [isCreating, setIsCreating] = useState(false);
   
   const [newTitle, setNewTitle] = useState("");
+  const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newUrl, setNewUrl] = useState("");
   const [newNote, setNewNote] = useState("");
   
   const [createError, setCreateError] = useState<string | null>(null);
@@ -84,9 +86,11 @@ export function VaultScreen() {
     if (!newTitle.trim() || !newPassword) return;
     try {
       setCreateError(null);
-      await api.createEntry(newTitle, newPassword, newNote);
+      await api.createEntry(newTitle, newUsername, newPassword, newUrl, newNote);
       setNewTitle("");
+      setNewUsername("");
       setNewPassword("");
+      setNewUrl("");
       setNewNote("");
       setIsCreating(false);
       await loadEntries();
@@ -116,7 +120,10 @@ export function VaultScreen() {
     }
   };
 
-  const filtered = entries.filter((e) => e.title.toLowerCase().includes(search.toLowerCase()));
+  const filtered = entries.filter((e) => 
+    e.title.toLowerCase().includes(search.toLowerCase()) || 
+    e.username.toLowerCase().includes(search.toLowerCase())
+  );
 
   if (loading) {
     return <div className="screen-center"><p className="screen-text">Загрузка...</p></div>;
@@ -139,14 +146,17 @@ export function VaultScreen() {
       {isCreating && (
         <div className="vault-create-row">
           <input className="input" placeholder="Название" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} autoFocus />
+          <input className="input" placeholder="Логин (необязательно)" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} />
           <div className="vault-create-password-wrapper">
             <input className="input" placeholder="Пароль" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
             <button className="icon-btn" onClick={generateNewPassword} title="Сгенерировать"><RefreshCw size={18} /></button>
           </div>
+          <input className="input" placeholder="URL (необязательно)" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} />
           <textarea className="input" placeholder="Заметка (необязательно)" value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2} />
+          
           <div className="vault-create-actions">
             <button className="primary icon-btn" onClick={handleCreate} title="Сохранить" disabled={!newTitle.trim() || !newPassword}><Check size={18} /></button>
-            <button className="icon-btn" onClick={() => { setIsCreating(false); setNewTitle(""); setNewPassword(""); setNewNote(""); setCreateError(null); }} title="Отмена"><X size={18} /></button>
+            <button className="icon-btn" onClick={() => { setIsCreating(false); setNewTitle(""); setNewUsername(""); setNewPassword(""); setNewUrl(""); setNewNote(""); setCreateError(null); }} title="Отмена"><X size={18} /></button>
           </div>
           {createError && <p className="error-text">{createError}</p>}
         </div>
@@ -159,6 +169,7 @@ export function VaultScreen() {
           filtered.map((entry) => (
             <div key={entry.id} className="vault-row">
               <span className="vault-title">{entry.title}</span>
+              {entry.username && <span className="vault-username">{entry.username}</span>}
               <span className="vault-password">{revealedId === entry.id ? revealedValue : "••••••••••••"}</span>
               <div className="vault-actions">
                 {entry.note && (

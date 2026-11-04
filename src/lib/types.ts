@@ -6,6 +6,8 @@ export interface VaultStatus {
 export interface EntryMeta {
   id: string;
   title: string;
+  username: string;
+  url: string;
   note: string;
   createdAt: string;
   updatedAt: string;
