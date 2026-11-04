@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::crypto::{self, KdfParams, SecretKey, NONCE_LEN, SALT_LEN};
@@ -60,7 +60,7 @@ impl KdfMetadata {
         }
     }
 
-    // Сбор AAD из метаданных для защиты заголовка от подмены
+    // Собираем AAD из метаданных для защиты заголовка от подмены
     fn to_aad(&self, version: u32) -> Vec<u8> {
         let mut aad = Vec::new();
         aad.extend_from_slice(&version.to_le_bytes());

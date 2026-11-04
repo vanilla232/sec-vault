@@ -313,18 +313,18 @@ pub async fn import_csv(state: State<'_, AppState>) -> Result<usize, AppError> {
     let idx_note = headers.iter().position(|h| h == "note" || h == "notes");
 
     let mut parsed_entries = Vec::new();
-    for result in rdr.records() {
-        if let Ok(record) = result {
-            let title = record.get(idx_title).unwrap_or("").to_string();
-            if title.is_empty() { continue; }
+    
+    // Используем flatten() вместо if let Ok(record), чтобы удовлетворить Clippy
+    for record in rdr.records().flatten() {
+        let title = record.get(idx_title).unwrap_or("").to_string();
+        if title.is_empty() { continue; }
 
-            let password = record.get(idx_password).unwrap_or("").to_string();
-            let username = idx_username.and_then(|i| record.get(i)).unwrap_or("").to_string();
-            let url = idx_url.and_then(|i| record.get(i)).unwrap_or("").to_string();
-            let note = idx_note.and_then(|i| record.get(i)).unwrap_or("").to_string();
+        let password = record.get(idx_password).unwrap_or("").to_string();
+        let username = idx_username.and_then(|i| record.get(i)).unwrap_or("").to_string();
+        let url = idx_url.and_then(|i| record.get(i)).unwrap_or("").to_string();
+        let note = idx_note.and_then(|i| record.get(i)).unwrap_or("").to_string();
 
-            parsed_entries.push((title, username, password, url, note));
-        }
+        parsed_entries.push((title, username, password, url, note));
     }
 
     let mut imported_count = 0;
@@ -360,7 +360,6 @@ pub async fn export_encrypted(state: State<'_, AppState>) -> Result<bool, AppErr
         None => return Ok(false),
     };
 
-    // Копируем зашифрованный файл напрямую, не расшифровывая его в памяти
     std::fs::copy(&state.vault_path, &dest_path)
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
@@ -385,12 +384,13 @@ pub async fn export_csv(state: State<'_, AppState>) -> Result<bool, AppError> {
         .from_path(&dest_path)
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
-    wtr.write_record(&["name", "username", "password", "url", "note"])
+    // Убрали & перед массивом, чтобы Clippy не ругался на needless_borrow
+    wtr.write_record(["name", "username", "password", "url", "note"])
         .map_err(|e| AppError::InvalidInput(e.to_string()))?;
 
     state.with_session(|session| {
         for entry in session.list_entries() {
-            wtr.write_record(&[
+            wtr.write_record([
                 &entry.title,
                 &entry.username,
                 entry.password.expose_secret(),
